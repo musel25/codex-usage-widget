@@ -192,6 +192,17 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(self.core.load_cached_usage(), previous)
         self.assertEqual(len(list((self.root / 'cache/codex-usage-widget').iterdir())), 1)
 
+    def test_account_switch_during_fetch_does_not_contaminate_cache(self):
+        def open_request(opener, request, timeout):
+            self.auth(account='second-account')
+            return contextlib.closing(io.BytesIO(json.dumps(payload(window())).encode()))
+        with patch.object(urllib.request.OpenerDirector, 'open', open_request):
+            usage = self.core.fetch_usage()
+        self.core.save_cached_usage(usage)
+        self.assertIsNone(self.core.load_cached_usage())
+        self.auth()
+        self.assertEqual(self.core.load_cached_usage().weekly.used_percent, 51)
+
     def test_cli_json_summary_and_error_exit(self):
         self.assertIsNotNone(importlib.util.find_spec('codex_usage_cli'))
         cli = importlib.import_module('codex_usage_cli')
@@ -210,13 +221,13 @@ class CoreTests(unittest.TestCase):
             self.assertNotEqual(cli.main([]), 0)
         self.assertIn('codex login', error_output.getvalue())
 
-
-if __name__ == '__main__':
-    unittest.main()
-
 class TimestampTests(unittest.TestCase):
     def test_unrepresentable_reset_is_unavailable(self):
         import codex_usage_core as core
         for field in ("reset_at", "reset_after_seconds"):
             payload = {"rate_limit": {"primary_window": {"used_percent": 20, "limit_window_seconds": 604800, field: 1e100}}}
             self.assertIsNone(core.parse_usage(payload, now=100).weekly)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1,5 +1,5 @@
 """Read-only Codex usage access and account-scoped normalized caching."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import http.client
 import json
@@ -30,6 +30,7 @@ class Usage:
     weekly: Window | None
     session: Window | None
     fetched_at: float
+    account_key: str | None = field(default=None, compare=False, repr=False)
 
 
 def _number(value):
@@ -115,7 +116,7 @@ def fetch_usage() -> Usage:
     try:
         with urllib.request.build_opener(_NoRedirect()).open(request, timeout=15) as response:
             payload = json.load(response)
-        return parse_usage(payload)
+        return replace(parse_usage(payload), account_key=hashlib.sha256(auth["account_id"].encode()).hexdigest())
     except urllib.error.HTTPError as error:
         code = error.code
         error.close()
@@ -131,9 +132,12 @@ def fetch_usage() -> Usage:
         raise UsageError('The usage service returned an invalid response.') from None
 
 
-def _cache_path():
-    account = load_auth()['account_id']
-    digest = hashlib.sha256(account.encode()).hexdigest()
+def current_account_key():
+    return hashlib.sha256(load_auth()['account_id'].encode()).hexdigest()
+
+
+def _cache_path(account_key=None):
+    digest = account_key or current_account_key()
     base = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
     return base / 'codex-usage-widget' / (digest + '.json')
 
@@ -169,7 +173,8 @@ def load_cached_usage() -> Usage | None:
     files never masquerade as fresh data or prevent a network request.
     """
     try:
-        return _cached_usage(json.loads(_cache_path().read_text()))
+        path = _cache_path()
+        return replace(_cached_usage(json.loads(path.read_text())), account_key=path.stem)
     except (UsageError, OSError, ValueError, TypeError, KeyError):
         return None
 
@@ -178,8 +183,11 @@ def save_cached_usage(usage) -> None:
     """Atomically replace a private cache with normalized data only."""
     temporary = None
     try:
-        data = asdict(_cached_usage(asdict(usage)))
-        path = _cache_path()
+        raw = asdict(usage)
+        raw.pop('account_key', None)
+        data = asdict(_cached_usage(raw))
+        data.pop('account_key', None)
+        path = _cache_path(usage.account_key)
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.parent.chmod(0o700)
         fd, temporary = tempfile.mkstemp(prefix='.usage-', dir=path.parent)
