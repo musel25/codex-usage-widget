@@ -17,7 +17,9 @@ def main(argv=None) -> int:
         print(f'Codex usage: {error}', file=sys.stderr)
         return 1
     if args.json:
-        print(json.dumps(asdict(usage), allow_nan=False))
+        data = asdict(usage)
+        data.pop('account_key', None)
+        print(json.dumps(data, allow_nan=False))
     else:
         print(f'Codex usage · {usage.plan}')
         for label, window in (('Weekly', usage.weekly), ('Session', usage.session)):

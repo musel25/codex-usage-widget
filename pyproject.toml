@@ -1,5 +1,7 @@
 [project]
 name = "codex-usage-widget"
 version = "0.1.0"
-requires-python = ">=3.13"
+description = "A native Linux popup for Codex weekly usage"
+readme = "README.md"
+requires-python = ">=3.10"
 dependencies = []
