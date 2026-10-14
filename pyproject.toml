@@ -4,4 +4,10 @@ version = "0.1.0"
 description = "A native Linux popup for Codex weekly usage"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "musel25" }]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/musel25/codex-usage-widget"
+Issues = "https://github.com/musel25/codex-usage-widget/issues"

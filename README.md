@@ -1,9 +1,14 @@
 # Codex Usage Widget
 
+[![Checks](https://github.com/musel25/codex-usage-widget/actions/workflows/checks.yml/badge.svg)](https://github.com/musel25/codex-usage-widget/actions/workflows/checks.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A native Linux popup for your **weekly Codex usage**, one shortcut away.
 
 **Win + Shift + I** opens the widget. Press **Esc** or click elsewhere to dismiss it.
 It shows the percentage used, remaining quota, your plan, and when the week resets.
+
+Graphite surfaces and white meters give Codex its own monochrome palette.
 
 ![Codex usage widget](docs/widget.png)
 
@@ -83,3 +88,15 @@ To remove the keyboard shortcut, open **Settings → Keyboard → Custom Shortcu
 and remove **Codex Weekly Usage**. Delete the two launchers in `~/.local/bin` and
 `codex-usage-widget.desktop` from `~/.local/share/applications` to uninstall the
 integration. No background service is installed.
+
+## License
+
+[MIT](LICENSE). Unofficial; not affiliated with or endorsed by OpenAI.
+
+## Contributing and companion widget
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for offline tests, a credential-free
+preview, and contribution guidelines. Screenshots above use synthetic data.
+
+Also available: [Claude Usage Widget](https://github.com/musel25/claude-usage-widget).
+The two widgets share a layout but keep separate installations and authentication.
