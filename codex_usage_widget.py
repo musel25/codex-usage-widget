@@ -18,7 +18,7 @@ gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from codex_usage_core import (
-    Usage, UsageError, current_account_key, fetch_usage, fetch_reset_passes, format_pass_expiry, load_cached_usage, reset_text, save_cached_usage,
+    Usage, UsageError, current_account_key, fetch_usage, fetch_reset_passes, format_pass_expiry, load_cached_usage, load_cached_passes, reset_text, save_cached_usage, save_cached_passes,
 )
 
 CSS = b'''
@@ -173,9 +173,12 @@ class UsageWindow(Gtk.ApplicationWindow):
         pass_box.set_margin_top(14)
         pass_box.add(label('Available limit resets', 'caption'))
         self.pass_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.pass_list.add(label('Checking reset passes…', 'detail'))
         pass_box.add(self.pass_list)
         content.add(pass_box)
-        self.passes = None
+        self.passes = load_cached_passes()
+        self.passes_cached = self.passes is not None
+        self.pass_lookup_complete = False
         self.session = label('', 'caption')
         self.session.set_margin_top(14)
         content.add(self.session)
@@ -257,8 +260,11 @@ class UsageWindow(Gtk.ApplicationWindow):
                 usage = fetch_usage()
                 try:
                     passes = fetch_reset_passes(usage.account_key)
+                    save_cached_passes(passes, usage.account_key)
                 except UsageError:
                     passes = None
+                except OSError:
+                    pass
                 try:
                     save_cached_usage(usage)
                 except (OSError, UsageError):
@@ -276,10 +282,15 @@ class UsageWindow(Gtk.ApplicationWindow):
         self.busy = False
         self.refresh_button.set_sensitive(True)
         self.error_message = error
+        self.pass_lookup_complete = True
         if usage:
             self.usage = usage
             self.cached = False
-            self.passes = passes
+            if passes is not None:
+                self.passes = passes
+                self.passes_cached = False
+            elif self.passes is not None:
+                self.passes_cached = True
         elif self.usage:
             self.cached = True
         self.render()
@@ -295,6 +306,7 @@ class UsageWindow(Gtk.ApplicationWindow):
             if not same_account:
                 self.usage = usage = None
                 self.passes = None
+                self.passes_cached = False
                 self.error_message = 'Codex account changed. Refresh to load your current account.'
                 self.value.set_text('—')
                 self.meter.update(None)
@@ -303,13 +315,15 @@ class UsageWindow(Gtk.ApplicationWindow):
         for child in self.pass_list.get_children():
             self.pass_list.remove(child)
         if self.passes is None:
-            self.pass_list.add(label('Pass data unavailable', 'detail'))
+            self.pass_list.add(label('Pass data unavailable' if self.pass_lookup_complete else 'Checking reset passes…', 'detail'))
         elif not self.passes:
             self.pass_list.add(label('No passes available', 'detail'))
         else:
             for item in self.passes:
                 self.pass_list.add(label(item['label'], 'detail'))
                 self.pass_list.add(label(format_pass_expiry(item['expires_at']), 'caption'))
+        if self.passes_cached:
+            self.pass_list.add(label('Saved pass data · stale' if self.pass_lookup_complete else 'Saved pass data · checking', 'caption'))
         self.pass_list.show_all()
         self.message.set_text(self.error_message or '')
         self.message.get_style_context().add_class('warning')

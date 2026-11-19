@@ -248,6 +248,19 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(self.core.UsageError):
             self.core.fetch_reset_passes(expected_account_key='other-account')
 
+    def test_pass_cache_is_account_scoped_and_drops_expired(self):
+        passes = [{'label': 'Full reset', 'expires_at': '2099-12-01T00:00:00Z'}]
+        self.assertIsNone(self.core.load_cached_passes())
+        self.core.save_cached_passes(passes)
+        self.assertEqual(self.core.load_cached_passes(), passes)
+        self.auth(account='other-account')
+        self.assertIsNone(self.core.load_cached_passes())
+        self.auth()
+        path = next((self.root / 'cache/codex-usage-widget').glob('*.resets.json'))
+        self.assertNotIn('fake-token', path.read_text())
+        path.write_text(json.dumps([{'label': 'Old', 'expires_at': '2000-01-01T00:00:00Z'}]))
+        self.assertEqual(self.core.load_cached_passes(), [])
+
     def test_cli_shows_pass_expiry(self):
         cli = importlib.import_module('codex_usage_cli')
         usage = self.core.parse_usage(payload(window()), now=1000)

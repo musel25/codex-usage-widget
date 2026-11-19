@@ -75,8 +75,9 @@ Only normalized usage and its fetch time are cached privately beneath
 `$XDG_CACHE_HOME/codex-usage-widget` (default `~/.cache/codex-usage-widget`), scoped
 to your account. Weekly windows are recognized by their seven-day duration, whether
 returned as a primary or secondary limit.
-Pass details are not saved in the usage cache. If the pass request fails, the
-widget still shows available quota data and marks pass data unavailable.
+Only pass labels and expiry times are saved in a separate account-scoped cache.
+They appear as soon as the widget opens and are marked as saved until a live
+check finishes. If the pass request fails, the widget still shows quota data.
 
 This is an unofficial widget using the endpoint supplied by ChatGPT. That endpoint
 and its response may change. API-key-only Codex logins do not provide ChatGPT usage.
