@@ -7,6 +7,8 @@ A native Linux popup for your **weekly Codex usage**, one shortcut away.
 
 **Win + Shift + I** opens the widget. Press **Esc** or click elsewhere to dismiss it.
 It shows the percentage used, remaining quota, your plan, and when the week resets.
+An **Available limit resets** section lists each banked pass with its local
+expiry time and time left. The terminal summary lists the same passes.
 
 Graphite surfaces and white meters give Codex its own monochrome palette.
 
@@ -63,7 +65,9 @@ never a fabricated zero. A five-hour quota is shown only when the account return
 
 The widget reads the current access token and account ID from
 `$CODEX_HOME/auth.json`, or `~/.codex/auth.json` by default, on each request. It sends
-them only to `https://chatgpt.com/backend-api/wham/usage`. Redirects are blocked.
+them only to `https://chatgpt.com/backend-api/wham/usage` and the read-only
+`https://chatgpt.com/backend-api/wham/rate-limit-reset-credits` list endpoint.
+Redirects are blocked. The widget never uses a pass.
 It never changes your Codex login or stores credentials in its cache. If login
 expires, run `codex login` and refresh the widget.
 
@@ -71,6 +75,8 @@ Only normalized usage and its fetch time are cached privately beneath
 `$XDG_CACHE_HOME/codex-usage-widget` (default `~/.cache/codex-usage-widget`), scoped
 to your account. Weekly windows are recognized by their seven-day duration, whether
 returned as a primary or secondary limit.
+Pass details are not saved in the usage cache. If the pass request fails, the
+widget still shows available quota data and marks pass data unavailable.
 
 This is an unofficial widget using the endpoint supplied by ChatGPT. That endpoint
 and its response may change. API-key-only Codex logins do not provide ChatGPT usage.
