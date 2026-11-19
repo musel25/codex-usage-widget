@@ -283,3 +283,38 @@ def fetch_reset_passes(expected_account_key=None):
         return parse_reset_passes(payload)
     except Exception:
         raise UsageError('Limit reset passes unavailable') from None
+
+
+def _pass_cache_path(account_key=None):
+    return _cache_path(account_key).with_suffix('.resets.json')
+
+
+def load_cached_passes():
+    """Load this account's saved pass list; drop expired entries."""
+    try:
+        data = json.loads(_pass_cache_path().read_text())
+        if not isinstance(data, list):
+            return None
+        now = datetime.now(timezone.utc)
+        return [item for item in data if isinstance(item, dict)
+                and set(item) == {'label', 'expires_at'}
+                and isinstance(item['label'], str) and item['label'].strip()
+                and (expiry := _pass_timestamp(item['expires_at'])) and expiry > now]
+    except (UsageError, OSError, ValueError, TypeError):
+        return None
+
+
+def save_cached_passes(passes, account_key=None):
+    """Save normalized pass labels and expiries, without tokens or credit IDs."""
+    path = _pass_cache_path(account_key)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    fd, temporary = tempfile.mkstemp(prefix='.resets-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump(passes, stream, allow_nan=False)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
