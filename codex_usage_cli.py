@@ -4,7 +4,7 @@ from dataclasses import asdict
 import json
 import sys
 
-from codex_usage_core import UsageError, fetch_usage, reset_text
+from codex_usage_core import UsageError, fetch_usage, fetch_reset_passes, format_pass_expiry, reset_text
 
 
 def main(argv=None) -> int:
@@ -16,9 +16,14 @@ def main(argv=None) -> int:
     except UsageError as error:
         print(f'Codex usage: {error}', file=sys.stderr)
         return 1
+    try:
+        passes = fetch_reset_passes(usage.account_key)
+    except UsageError:
+        passes = None
     if args.json:
         data = asdict(usage)
         data.pop('account_key', None)
+        data['limit_reset_passes'] = passes
         print(json.dumps(data, allow_nan=False))
     else:
         print(f'Codex usage · {usage.plan}')
@@ -29,6 +34,14 @@ def main(argv=None) -> int:
                 print(f'{label}: {window.used_percent:g}% used '
                       f'({100 - window.used_percent:g}% remaining) · '
                       f'reset: {reset_text(window.reset_at)}')
+        print('Available limit resets:')
+        if passes is None:
+            print('  Pass data unavailable')
+        elif not passes:
+            print('  No passes available')
+        else:
+            for item in passes:
+                print(f'  {item["label"]} · {format_pass_expiry(item["expires_at"])}')
     return 0
 
 

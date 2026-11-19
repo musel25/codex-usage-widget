@@ -1,5 +1,6 @@
 """Read-only Codex usage access and account-scoped normalized caching."""
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timezone
 import hashlib
 import http.client
 import json
@@ -222,3 +223,63 @@ def reset_text(reset_at, now=None) -> str:
     if hours:
         return f'{hours}h {minutes}m'
     return f'{minutes}m'
+
+
+def _pass_timestamp(value):
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt if dt.tzinfo else None
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def parse_reset_passes(payload, now=None):
+    """Keep only available, unexpired reset credits; omit credit IDs."""
+    current = _pass_timestamp(now) if isinstance(now, str) else datetime.now(timezone.utc)
+    if current is None or not isinstance(payload, dict) or not isinstance(payload.get('credits'), list):
+        return []
+    passes = []
+    for credit in payload['credits']:
+        if not isinstance(credit, dict) or credit.get('status') != 'available':
+            continue
+        expiry = _pass_timestamp(credit.get('expires_at'))
+        label = credit.get('title')
+        if expiry and expiry > current and isinstance(label, str) and label.strip():
+            passes.append({'label': label.strip(), 'expires_at': credit['expires_at']})
+    return sorted(passes, key=lambda item: item['expires_at'])
+
+
+def format_pass_expiry(expires_at, now=None):
+    expiry = _pass_timestamp(expires_at)
+    if expiry is None:
+        return 'Expiry unavailable'
+    current = now or datetime.now(timezone.utc)
+    local = expiry.astimezone()
+    remaining = max(0, int((expiry - current).total_seconds()))
+    days, remainder = divmod(remaining, 86400)
+    hours = remainder // 3600
+    left = f'{days}d {hours}h left' if days else f'{hours}h left' if hours else 'Less than 1h left'
+    return f"Expires {local.strftime('%b')} {local.day} at {local.strftime('%I:%M %p %Z').lstrip('0')} · {left}"
+
+
+def fetch_reset_passes(expected_account_key=None):
+    """Read the banked reset list; never redeem a credit."""
+    auth = load_auth()
+    account_key = hashlib.sha256(auth['account_id'].encode()).hexdigest()
+    if expected_account_key is not None and account_key != expected_account_key:
+        raise UsageError('Codex account changed. Refresh usage.')
+    request = urllib.request.Request(
+        'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits',
+        headers={'Authorization': 'Bearer ' + auth['access_token'],
+                 'ChatGPT-Account-Id': auth['account_id'],
+                 'Accept': 'application/json'}, method='GET')
+    try:
+        with urllib.request.build_opener(_NoRedirect()).open(request, timeout=15) as response:
+            payload = json.load(response)
+        if current_account_key() != account_key:
+            raise UsageError('Codex account changed. Refresh usage.')
+        if not isinstance(payload, dict) or not isinstance(payload.get('credits'), list):
+            raise ValueError
+        return parse_reset_passes(payload)
+    except Exception:
+        raise UsageError('Limit reset passes unavailable') from None

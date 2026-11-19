@@ -18,7 +18,7 @@ gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from codex_usage_core import (
-    Usage, UsageError, current_account_key, fetch_usage, load_cached_usage, reset_text, save_cached_usage,
+    Usage, UsageError, current_account_key, fetch_usage, fetch_reset_passes, format_pass_expiry, load_cached_usage, reset_text, save_cached_usage,
 )
 
 CSS = b'''
@@ -168,6 +168,14 @@ class UsageWindow(Gtk.ApplicationWindow):
         reset_box.add(self.reset)
         reset_box.add(self.reset_date)
         content.add(reset_box)
+        pass_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        pass_box.get_style_context().add_class('reset-box')
+        pass_box.set_margin_top(14)
+        pass_box.add(label('Available limit resets', 'caption'))
+        self.pass_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        pass_box.add(self.pass_list)
+        content.add(pass_box)
+        self.passes = None
         self.session = label('', 'caption')
         self.session.set_margin_top(14)
         content.add(self.session)
@@ -248,17 +256,21 @@ class UsageWindow(Gtk.ApplicationWindow):
             try:
                 usage = fetch_usage()
                 try:
+                    passes = fetch_reset_passes(usage.account_key)
+                except UsageError:
+                    passes = None
+                try:
                     save_cached_usage(usage)
                 except (OSError, UsageError):
                     pass  # A read-only cache must not hide a successful response.
-                GLib.idle_add(self.finish_fetch, usage, None)
+                GLib.idle_add(self.finish_fetch, usage, None, passes)
             except UsageError as exc:
                 GLib.idle_add(self.finish_fetch, None, str(exc))
             except Exception:
                 GLib.idle_add(self.finish_fetch, None, 'Unable to read usage. Try refreshing or run codex login.')
         threading.Thread(target=work, daemon=True).start()
 
-    def finish_fetch(self, usage, error):
+    def finish_fetch(self, usage, error, passes=None):
         if not self.alive:
             return False
         self.busy = False
@@ -267,6 +279,7 @@ class UsageWindow(Gtk.ApplicationWindow):
         if usage:
             self.usage = usage
             self.cached = False
+            self.passes = passes
         elif self.usage:
             self.cached = True
         self.render()
@@ -281,11 +294,23 @@ class UsageWindow(Gtk.ApplicationWindow):
                 same_account = False
             if not same_account:
                 self.usage = usage = None
+                self.passes = None
                 self.error_message = 'Codex account changed. Refresh to load your current account.'
                 self.value.set_text('—')
                 self.meter.update(None)
                 self.plan.set_text('Usage')
                 self.session.hide()
+        for child in self.pass_list.get_children():
+            self.pass_list.remove(child)
+        if self.passes is None:
+            self.pass_list.add(label('Pass data unavailable', 'detail'))
+        elif not self.passes:
+            self.pass_list.add(label('No passes available', 'detail'))
+        else:
+            for item in self.passes:
+                self.pass_list.add(label(item['label'], 'detail'))
+                self.pass_list.add(label(format_pass_expiry(item['expires_at']), 'caption'))
+        self.pass_list.show_all()
         self.message.set_text(self.error_message or '')
         self.message.get_style_context().add_class('warning')
         self.message.set_visible(bool(self.error_message))

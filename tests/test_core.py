@@ -209,7 +209,9 @@ class CoreTests(unittest.TestCase):
         usage = self.core.parse_usage(payload(window()), now=1000)
         for args in (['--json'], []):
             output = io.StringIO()
-            with patch.object(cli, 'fetch_usage', return_value=usage), contextlib.redirect_stdout(output):
+            with patch.object(cli, 'fetch_usage', return_value=usage), \
+                    patch.object(cli, 'fetch_reset_passes', return_value=[]), \
+                    contextlib.redirect_stdout(output):
                 self.assertEqual(cli.main(args), 0)
             if args:
                 self.assertEqual(json.loads(output.getvalue())['weekly']['used_percent'], 51)
@@ -220,6 +222,42 @@ class CoreTests(unittest.TestCase):
         with patch.object(cli, 'fetch_usage', side_effect=self.core.UsageError('Run codex login.')), contextlib.redirect_stderr(error_output):
             self.assertNotEqual(cli.main([]), 0)
         self.assertIn('codex login', error_output.getvalue())
+
+    def test_available_reset_passes_filter_expired_and_used(self):
+        credits = {'credits': [
+            {'status': 'available', 'title': 'Full reset', 'expires_at': '2026-11-30T20:00:00Z'},
+            {'status': 'used', 'title': 'Used reset', 'expires_at': '2026-12-01T20:00:00Z'},
+            {'status': 'available', 'title': 'Expired reset', 'expires_at': '2026-11-01T20:00:00Z'},
+            {'status': 'available', 'title': 'Bad reset', 'expires_at': 'bad'},
+        ]}
+        passes = self.core.parse_reset_passes(credits, now='2026-11-19T00:00:00Z')
+        self.assertEqual(passes, [{'label': 'Full reset', 'expires_at': '2026-11-30T20:00:00Z'}])
+
+    def test_reset_pass_request_stays_on_current_account(self):
+        response = {'credits': [{'status': 'available', 'title': 'Full reset',
+                                 'expires_at': '2099-11-30T20:00:00Z'}]}
+        seen = []
+        def open_request(opener, request, timeout):
+            seen.append(request)
+            return contextlib.closing(io.BytesIO(json.dumps(response).encode()))
+        with patch.object(urllib.request.OpenerDirector, 'open', open_request):
+            passes = self.core.fetch_reset_passes(expected_account_key=self.core.current_account_key())
+        self.assertEqual(len(passes), 1)
+        self.assertEqual(seen[0].get_method(), 'GET')
+        self.assertEqual(seen[0].full_url, 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits')
+        with self.assertRaises(self.core.UsageError):
+            self.core.fetch_reset_passes(expected_account_key='other-account')
+
+    def test_cli_shows_pass_expiry(self):
+        cli = importlib.import_module('codex_usage_cli')
+        usage = self.core.parse_usage(payload(window()), now=1000)
+        output = io.StringIO()
+        with patch.object(cli, 'fetch_usage', return_value=usage), \
+                patch.object(cli, 'fetch_reset_passes', return_value=[{'label': 'Full reset', 'expires_at': '2026-11-30T20:00:00Z'}]), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(cli.main([]), 0)
+        self.assertIn('Available limit resets', output.getvalue())
+        self.assertIn('Nov 30', output.getvalue())
 
 class TimestampTests(unittest.TestCase):
     def test_unrepresentable_reset_is_unavailable(self):
